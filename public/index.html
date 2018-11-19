@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Canvas Head Of Year Reports</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.3/css/bootstrap.min.css" type="text/css" />
+</head>
+<body>
+    
+  <div class="container">
+    <h1 class="mt-5 mb-3">Assignments</h1>
+    <div class="alert alert-primary lastRefreshed"></div>
+    
+    <div class="button-group">
+      <div class="form-group">
+        <label for="days">Number of days to search back on</label>
+        <input type="number" class="form-control" id="days" placeholder="7">
+        <small id="dayshelp" class="form-text text-muted">e.g. last 7 days</small>
+      </div>
+    </div>
+    
+    <div class="root mb-3">
+    </div>
+  </div>
+  
+  <div class="bg-light container-fluid p-5">
+    <div class="container">
+      <div class="row">
+        <div class="col-6">
+          <caption>Copyright 2018 King Alfred School <br> Created by <b>Ori Marash</b> and <b>Felix Ronneberger</b></caption>
+        </div>
+        <div class="col-6 position-relative">
+          <a 
+            href="https://us-central1-canvas-hod-reports.cloudfunctions.net/sync"
+            target="_blank"
+            class="btn btn-danger float-right">
+            Refresh Assignments
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment.min.js"></script>
+  <script>
+    // Initialize firebase
+    firebase.initializeApp({
+      apiKey: "AIzaSyAyVr2jEQ_TD38pJAaFTvt1Wkqmw3EeXqo",
+      authDomain: "canvas-hod-reports.firebaseapp.com",
+      databaseURL: "https://canvas-hod-reports.firebaseio.com",
+      projectId: "canvas-hod-reports",
+      storageBucket: "canvas-hod-reports.appspot.com",
+      messagingSenderId: "72986432772"
+    })
+    
+    // Set the form #days to the current days searched for
+    $('#days').val(
+      window.location.hash.substr(1)
+    )
+    
+    // When chaning the form, change the hash
+    $('#days').change(e => {
+      window.location.hash = e.currentTarget.value
+      window.location.reload()
+    })
+    
+    // Get info from firestore
+    firebase.firestore()
+      .doc('canvas/data')
+      .get()
+      .then(data => {
+        
+        $('.lastRefreshed').text(
+          `Last refreshed ${moment(data.data().lastChanged).from(new Date())}`
+        )
+        
+        var filteredData
+        
+        // Only show assignments from selected time
+        if (window.location.hash) {
+          var time = 1000 * 60 * 60 * 24 * window.location.hash.substr(1)
+          
+          filteredData = data.data().assignments.filter(x => {
+            return (new Date() - new Date(x.created_at)) < time
+          })
+          
+        } else {
+          filteredData = data.data().assignments
+        }
+        
+        // Sort information by date
+        var sortedData = filteredData.sort((a, b) => 
+          new Date(b.created_at) - new Date(a.created_at))
+        
+        // get all department ids
+        var departmentIds = []
+        data.data().courses.forEach(course => {
+          if (departmentIds.indexOf(course.account_id) == -1) {
+            departmentIds.push(course.account_id)
+          }
+        })
+        
+        // for each department id, fill up it's courses
+        // [{ id: 2, courses: [] }, {etc.}]
+        var departments = departmentIds.map(x => {
+          var coursesInThisDepartment = []
+          
+          for (var course of data.data().courses) {
+            console.log(course, x)
+            if (course.account_id == x) {
+              coursesInThisDepartment.push(course)
+            }
+          }
+          
+          return {
+            id: x,
+            courses: coursesInThisDepartment
+          }
+        })
+        
+        // for each department and each of it's courses, populate the assignments
+        var finalData = departments.map(department => {
+          var assignmentsInThisDepartment = []
+          
+          sortedData.forEach(assignment => {
+            department.courses.forEach(course => {
+              if (assignment.course_id === course.id) {
+                assignmentsInThisDepartment.push(assignment)
+              }
+            })
+          })
+          
+          return {
+            department: department.id,
+            assignments: assignmentsInThisDepartment
+          }
+        })
+        
+        console.log(finalData)
+        
+        for (var department of finalData) {
+          $('.root').append(`
+            <div class="list-group mb-3 department-${department.department}">
+              <h4 class="mb-4 mt-5">Department #${department.department}</h4>
+            </div>
+          `)
+          
+          if (department.assignments.length == 0) {
+            $('.department-' + department.department).append(
+              '<div class="alert alert-danger">No Assignments</div>'
+            )
+          }
+          
+          for (var assignment of department.assignments) {
+            console.log(assignment)
+            $('.department-' + department.department).append(
+              `<a href="${assignment.html_url}" class="list-group-item list-group-item-action">
+                <p class="font-weight-bold m-0">
+                  ${assignment.name}
+                </p>
+                <p class="m-0">
+                  ${
+                    moment(assignment.created_at).format('D MMM') 
+                    + ' (' +
+                    moment(assignment.created_at).from(new Date())
+                    + ')'
+                  }
+                </p>
+              </a>`
+            ) 
+          }
+        }
+        
+      })
+  </script>
+</body>
+</html>
