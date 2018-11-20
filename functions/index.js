@@ -95,12 +95,15 @@ exports.sync = functions.https.onRequest(async (req, res) => {
     )
   }
 
+  // Update lastChanged time
   b.update(
     admin.firestore().doc('other/meta'),
     { lastChanged: new Date() }
   )
   
+  // Do the query
   await b.commit()
   
+  // Send back the assignments, mainly for debugging purposes
   res.send(assignments)
 })
