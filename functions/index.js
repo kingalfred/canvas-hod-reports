@@ -60,7 +60,7 @@ exports.sync = functions.https.onRequest(async (req, res) => {
       data[department.id].courses.find((x, i) => {
         if (x.id === course.id) {
           // Save to data
-          data[department.id].courses[i] = { ...x, assignments }
+          data[department.id].courses[i] = { ...x, assignments: assignments.map(x => ({ ...x, date: new Date(x.created_at)})) }
           
           return true
         }

@@ -68,113 +68,39 @@
       window.location.reload()
     })
     
+    // Date x days ago
+    var d = new Date()
+    d.setDate(d.getDate() - window.location.hash.substr(1))
+    
     // Get info from firestore
     firebase.firestore()
-      .doc('canvas/data')
+      .collection('assignments')
+      .where('data.date', '>', d)
       .get()
-      .then(data => {
-        
-        $('.lastRefreshed').text(
-          `Last refreshed ${moment(data.data().lastChanged).from(new Date())}`
-        )
-        
-        var filteredData
-        
-        // Only show assignments from selected time
-        if (window.location.hash) {
-          var time = 1000 * 60 * 60 * 24 * window.location.hash.substr(1)
+      .then(assignments => {
+        assignments.forEach(assignment => {
+          var { department, course, data, teachers } = assignment.data()
           
-          filteredData = data.data().assignments.filter(x => {
-            return (new Date() - new Date(x.created_at)) < time
-          })
+          // For each assignment, create a div (if it doesn't exist already)
           
-        } else {
-          filteredData = data.data().assignments
-        }
-        
-        // Sort information by date
-        var sortedData = filteredData.sort((a, b) => 
-          new Date(b.created_at) - new Date(a.created_at))
-        
-        // get all department ids
-        var departmentIds = []
-        data.data().courses.forEach(course => {
-          if (departmentIds.indexOf(course.account_id) == -1) {
-            departmentIds.push(course.account_id)
-          }
-        })
-        
-        // for each department id, fill up it's courses
-        // [{ id: 2, courses: [] }, {etc.}]
-        var departments = departmentIds.map(x => {
-          var coursesInThisDepartment = []
-          
-          for (var course of data.data().courses) {
-            console.log(course, x)
-            if (course.account_id == x) {
-              coursesInThisDepartment.push(course)
-            }
+          if ( $('.root #dep-' + department).length == 0 ) {
+            $('.root').append(`
+              <div class="mb-3" id="dep-${department}">
+                <h4 class="mb-3">Department #${department}</h4>
+                <div class="list-group mb-5"></div>
+              </div>
+            `)
           }
           
-          return {
-            id: x,
-            courses: coursesInThisDepartment
-          }
-        })
-        
-        // for each department and each of it's courses, populate the assignments
-        var finalData = departments.map(department => {
-          var assignmentsInThisDepartment = []
-          
-          sortedData.forEach(assignment => {
-            department.courses.forEach(course => {
-              if (assignment.course_id === course.id) {
-                assignmentsInThisDepartment.push(assignment)
-              }
-            })
-          })
-          
-          return {
-            department: department.id,
-            assignments: assignmentsInThisDepartment
-          }
-        })
-        
-        console.log(finalData)
-        
-        for (var department of finalData) {
-          $('.root').append(`
-            <div class="list-group mb-3 department-${department.department}">
-              <h4 class="mb-4 mt-5">Department #${department.department}</h4>
-            </div>
+          $(`.root #dep-${department} .list-group`).append(`
+            <a class="list-group-item list-group-item-action" href=${data.html_url}>
+              <h6>${data.name}</h6>
+              <p class="mb-1">by ${teachers[0].display_name + (teachers[1] ? ' <i>and</i> ' + teachers[1].display_name : '')}</p>
+              <p class="mb-0">Created ${moment(data.date).fromNow()}</p>
+            </a>
           `)
           
-          if (department.assignments.length == 0) {
-            $('.department-' + department.department).append(
-              '<div class="alert alert-danger">No Assignments</div>'
-            )
-          }
-          
-          for (var assignment of department.assignments) {
-            console.log(assignment)
-            $('.department-' + department.department).append(
-              `<a href="${assignment.html_url}" class="list-group-item list-group-item-action">
-                <p class="font-weight-bold m-0">
-                  ${assignment.name}
-                </p>
-                <p class="m-0">
-                  ${
-                    moment(assignment.created_at).format('D MMM') 
-                    + ' (' +
-                    moment(assignment.created_at).from(new Date())
-                    + ')'
-                  }
-                </p>
-              </a>`
-            ) 
-          }
-        }
-        
+        })
       })
   </script>
 </body>
