@@ -2,8 +2,6 @@ const functions = require('firebase-functions')
 const admin = require('firebase-admin')
 admin.initializeApp(functions.config().firebase)
 
-
-const util = require('util')
 const needle = require('needle')
 const options = {
   headers: {
@@ -29,9 +27,16 @@ exports.sync = functions.https.onRequest((req, res) => {
   getDepartments()
     .then(departments => {
       var departmentPromises = []
-      
+
       // For each department...
       for (var department of departments.body) {
+        // Save department
+        // TODO: make this a bulk request
+        admin.firestore()
+          .collection('departments')
+          .doc(department.id)
+          .set({ name: department.name })
+
         // Add promise to array which resolves to the courses in the department
         departmentPromises.push(
           getCoursesInDepartment(department)
@@ -44,7 +49,7 @@ exports.sync = functions.https.onRequest((req, res) => {
     .then(departmentCourses => {
       // departmentCourses is now an array of arrays containing courses
       // [ [englishcourse1, englishcourse2], [mathcourse1, mathcourse2], [sciencecourse1, sciencecourse2] ]
-      
+
       var coursePromises = []
       var allTheCourses = []
       
