@@ -21,6 +21,10 @@
       </div>
     </div>
     
+    <div class="alert alert-dark">Ping me an email (orim@kingalfred.org.uk) if you want any more graphs!</div>
+    <canvas id="byteacher"></canvas>
+
+    <h1 class="mt-5">All Assignments</h1>
     <div class="root mb-3">
     </div>
   </div>
@@ -45,6 +49,8 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
+  <script src="https://unpkg.com/chartjs-plugin-colorschemes@latest/dist/chartjs-plugin-colorschemes.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment.min.js"></script>
   <script>
     // Initialize firebase
@@ -56,6 +62,13 @@
       storageBucket: "canvas-hod-reports.appspot.com",
       messagingSenderId: "72986432772"
     })
+
+    firebase.firestore()
+      .doc('other/meta')
+      .get()
+      .then(data => {
+        $('.lastRefreshed').text( 'Last refreshed ' + moment(data.data().lastChanged).fromNow() )
+      })
     
     // Set the form #days to the current days searched for
     $('#days').val(
@@ -78,9 +91,27 @@
       .where('data.date', '>', d)
       .get()
       .then(assignments => {
+        var teacherChartInfo = {}
+
         assignments.forEach(assignment => {
           var { department, course, data, teachers } = assignment.data()
           
+          // Save to teacherChartInfo
+          if (!teacherChartInfo[teachers[0].display_name]) {
+            teacherChartInfo[teachers[0].display_name] = 0
+          }
+          
+          teacherChartInfo[teachers[0].display_name] += 1
+
+          // If there's a second teacher
+          if (teachers[1]) {
+            if (!teacherChartInfo[teachers[1].display_name]) {
+              teacherChartInfo[teachers[1].display_name] = 0
+            }
+          
+            teacherChartInfo[teachers[1].display_name] += 1
+          }
+
           // For each assignment, create a div (if it doesn't exist already)
           
           if ( $('.root #dep-' + department).length == 0 ) {
@@ -99,8 +130,32 @@
               <p class="mb-0">Created ${moment(data.date).fromNow()}</p>
             </a>
           `)
-          
         })
+
+        var myChart = new Chart('byteacher', {
+          type: 'pie',
+          data: {
+            datasets: [{
+              data: Object.values(teacherChartInfo)
+            }],
+
+            // These labels appear in the legend and in the tooltips when hovering different arcs
+            labels: Object.keys(teacherChartInfo)
+          },
+          options: {
+            title: {
+              display: true,
+              text: 'Number of assignments per teacher'
+            },
+            plugins: {
+              colorschemes: {
+                scheme: 'brewer.Paired12'
+              }
+            }
+          }
+        })
+
+        console.log(teacherChartInfo)
       })
   </script>
 </body>

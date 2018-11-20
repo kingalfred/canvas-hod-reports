@@ -10,16 +10,16 @@ const options = {
 }
 
 async function getDepartments() {
-  let url = 'https://kingalfred.test.instructure.com/api/v1/accounts/1/sub_accounts?per_page=50'
+  let url = 'https://kingalfred.test.instructure.com/api/v1/accounts/1/sub_accounts?per_page=100'
   var departments = await needle('get', url, options)
   
   return departments.body
 }
 
 async function getCoursesInDepartment(id) {
-  // TODO: investigae per_page, it's limiting the number of courses returned
+  // TODO: investigate per_page, it's limiting the number of courses returned
   // for now, it's 10 so that tests can be made quickly
-  let url = 'https://kingalfred.test.instructure.com/api/v1/accounts/' + id + '/courses?include=teachers&per_page=10'
+  let url = 'https://kingalfred.test.instructure.com/api/v1/accounts/' + id + '/courses?include=teachers&per_page=100'
   var courses = await needle('get', url, options)
   
   return courses.body
@@ -94,6 +94,11 @@ exports.sync = functions.https.onRequest(async (req, res) => {
       a
     )
   }
+
+  b.update(
+    admin.firestore().doc('other/meta'),
+    { lastChanged: new Date() }
+  )
   
   await b.commit()
   
