@@ -21,6 +21,10 @@
       </div>
     </div>
     
+    <div class="alert alert-dark">Ping me an email (orim@kingalfred.org.uk) if you want any more graphs!</div>
+    <canvas id="byteacher"></canvas>
+
+    <h1 class="mt-5">All Assignments</h1>
     <div class="root mb-3">
     </div>
   </div>
@@ -45,6 +49,8 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.min.js"></script>
+  <script src="https://unpkg.com/chartjs-plugin-colorschemes@latest/dist/chartjs-plugin-colorschemes.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment.min.js"></script>
   <script>
     // Initialize firebase
@@ -56,6 +62,13 @@
       storageBucket: "canvas-hod-reports.appspot.com",
       messagingSenderId: "72986432772"
     })
+
+    firebase.firestore()
+      .doc('other/meta')
+      .get()
+      .then(data => {
+        $('.lastRefreshed').text( 'Last refreshed ' + moment(data.data().lastChanged).fromNow() )
+      })
     
     // Set the form #days to the current days searched for
     $('#days').val(
@@ -68,113 +81,81 @@
       window.location.reload()
     })
     
+    // Date x days ago
+    var d = new Date()
+    d.setDate(d.getDate() - window.location.hash.substr(1))
+    
     // Get info from firestore
     firebase.firestore()
-      .doc('canvas/data')
+      .collection('assignments')
+      .where('data.date', '>', d)
       .get()
-      .then(data => {
-        
-        $('.lastRefreshed').text(
-          `Last refreshed ${moment(data.data().lastChanged).from(new Date())}`
-        )
-        
-        var filteredData
-        
-        // Only show assignments from selected time
-        if (window.location.hash) {
-          var time = 1000 * 60 * 60 * 24 * window.location.hash.substr(1)
+      .then(assignments => {
+        var teacherChartInfo = {}
+
+        assignments.forEach(assignment => {
+          var { department, course, data, teachers } = assignment.data()
           
-          filteredData = data.data().assignments.filter(x => {
-            return (new Date() - new Date(x.created_at)) < time
-          })
-          
-        } else {
-          filteredData = data.data().assignments
-        }
-        
-        // Sort information by date
-        var sortedData = filteredData.sort((a, b) => 
-          new Date(b.created_at) - new Date(a.created_at))
-        
-        // get all department ids
-        var departmentIds = []
-        data.data().courses.forEach(course => {
-          if (departmentIds.indexOf(course.account_id) == -1) {
-            departmentIds.push(course.account_id)
+          // Save to teacherChartInfo
+          if (!teacherChartInfo[teachers[0].display_name]) {
+            teacherChartInfo[teachers[0].display_name] = 0
           }
-        })
-        
-        // for each department id, fill up it's courses
-        // [{ id: 2, courses: [] }, {etc.}]
-        var departments = departmentIds.map(x => {
-          var coursesInThisDepartment = []
           
-          for (var course of data.data().courses) {
-            console.log(course, x)
-            if (course.account_id == x) {
-              coursesInThisDepartment.push(course)
+          teacherChartInfo[teachers[0].display_name] += 1
+
+          // If there's a second teacher
+          if (teachers[1]) {
+            if (!teacherChartInfo[teachers[1].display_name]) {
+              teacherChartInfo[teachers[1].display_name] = 0
+            }
+          
+            teacherChartInfo[teachers[1].display_name] += 1
+          }
+
+          // For each assignment, create a div (if it doesn't exist already)
+          
+          if ( $('.root #dep-' + department).length == 0 ) {
+            $('.root').append(`
+              <div class="mb-3" id="dep-${department}">
+                <h4 class="mb-3">Department #${department}</h4>
+                <div class="list-group mb-5"></div>
+              </div>
+            `)
+          }
+          
+          $(`.root #dep-${department} .list-group`).append(`
+            <a class="list-group-item list-group-item-action" href=${data.html_url}>
+              <h6>${data.name}</h6>
+              <p class="mb-1">by ${teachers[0].display_name + (teachers[1] ? ' <i>and</i> ' + teachers[1].display_name : '')}</p>
+              <p class="mb-0">Created ${moment(data.date).fromNow()}</p>
+            </a>
+          `)
+        })
+
+        var myChart = new Chart('byteacher', {
+          type: 'pie',
+          data: {
+            datasets: [{
+              data: Object.values(teacherChartInfo)
+            }],
+
+            // These labels appear in the legend and in the tooltips when hovering different arcs
+            labels: Object.keys(teacherChartInfo)
+          },
+          options: {
+            title: {
+              display: true,
+              text: 'Number of assignments per teacher'
+            },
+            plugins: {
+              colorschemes: {
+                scheme: 'brewer.Paired12'
+              }
             }
           }
-          
-          return {
-            id: x,
-            courses: coursesInThisDepartment
-          }
         })
-        
-        // for each department and each of it's courses, populate the assignments
-        var finalData = departments.map(department => {
-          var assignmentsInThisDepartment = []
-          
-          sortedData.forEach(assignment => {
-            department.courses.forEach(course => {
-              if (assignment.course_id === course.id) {
-                assignmentsInThisDepartment.push(assignment)
-              }
-            })
-          })
-          
-          return {
-            department: department.id,
-            assignments: assignmentsInThisDepartment
-          }
-        })
-        
-        console.log(finalData)
-        
-        for (var department of finalData) {
-          $('.root').append(`
-            <div class="list-group mb-3 department-${department.department}">
-              <h4 class="mb-4 mt-5">Department #${department.department}</h4>
-            </div>
-          `)
-          
-          if (department.assignments.length == 0) {
-            $('.department-' + department.department).append(
-              '<div class="alert alert-danger">No Assignments</div>'
-            )
-          }
-          
-          for (var assignment of department.assignments) {
-            console.log(assignment)
-            $('.department-' + department.department).append(
-              `<a href="${assignment.html_url}" class="list-group-item list-group-item-action">
-                <p class="font-weight-bold m-0">
-                  ${assignment.name}
-                </p>
-                <p class="m-0">
-                  ${
-                    moment(assignment.created_at).format('D MMM') 
-                    + ' (' +
-                    moment(assignment.created_at).from(new Date())
-                    + ')'
-                  }
-                </p>
-              </a>`
-            ) 
-          }
-        }
-        
+
+        console.log(teacherChartInfo)
       })
   </script>
 </body>
