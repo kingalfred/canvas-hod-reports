@@ -32,6 +32,11 @@ async function getAssignmentsInCourse(id) {
   return assignments.body
 }
 
+async function getYearOfCourse(id) {
+  let url = 'https://kingalfred.test.instructure.com/api/v1/courses/' + id
+  var course = await needle('get', url, options)
+  return course.name.match()
+}
 
 exports.sync = functions.https.onRequest(async (req, res) => {
   var data = {}
@@ -57,11 +62,15 @@ exports.sync = functions.https.onRequest(async (req, res) => {
       // Get assignments in the course
       var assignments = await getAssignmentsInCourse(course.id)
       
+      // find the correct course...
       data[department.id].courses.find((x, i) => {
         if (x.id === course.id) {
-          // Save to data
-          data[department.id].courses[i] = { ...x, assignments: assignments.map(x => ({ ...x, date: new Date(x.created_at)})) }
           
+          // ... and save the assignment to it
+          data[department.id].courses[i] = {
+            ...x,
+            assignments: assignments
+          }
           return true
         }
       })
@@ -73,13 +82,19 @@ exports.sync = functions.https.onRequest(async (req, res) => {
   // to firestore
   var assignments = []
   
-  for (var i of Object.keys(data)) {
-    for (var course of data[i].courses) {
-      for (var assignment of course.assignments) {
+  for (var i of Object.keys(data)) { // for each department
+    for (var course of data[i].courses) { // for each course
+      for (var assignment of course.assignments) { // for each assignment
+        var yearGroup = course.name.match(/Year (\d{1,2})/g) // gets year group from a string in the format: Year <year group> Subject with Teacher
+        
+        console.log(course.teachers)
         assignments.push({
           department: data[i].departmentBody.id,
+          departmentName: data[i].departmentBody.name,
           course: course.id,
+          yearGroup: yearGroup !== null ? yearGroup[0] : '' ,
           teachers: course.teachers,
+          date: new Date(),
           data: assignment
         })
       }
@@ -87,23 +102,30 @@ exports.sync = functions.https.onRequest(async (req, res) => {
   }
   
   var b = admin.firestore().batch()
+  var i = 0
   
   for (var a of assignments) {
     b.set(
       admin.firestore().doc('assignments/' + a.data.id),
       a
     )
+    
+    console.log(a.data.name)
+    
+    // Batch 400 queries together, then restart the batch so that firestore doesn't get angry
+    if (i > 400) {
+      i = 0
+      await b.commit()
+      b = admin.firestore().batch()
+    }
+    
+    i++
   }
-
+  
   // Update lastChanged time
-  b.update(
-    admin.firestore().doc('other/meta'),
-    { lastChanged: new Date() }
-  )
+  await admin.firestore().doc('other/meta')
+    .update({ lastChanged: new Date() })
   
-  // Do the query
-  await b.commit()
-  
-  // Send back the assignments, mainly for debugging purposes
+  // Send back the assignments as JSON, mainly for debugging purposes
   res.send(assignments)
 })
